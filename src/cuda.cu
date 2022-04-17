@@ -97,10 +97,13 @@ __global__ void kernel_stage1(
     unsigned char *image, int width, int height, int channels,
     unsigned long long *mosaic_sum)
 {
-    const unsigned int tile_index = (blockIdx.y * blockDim.x + blockIdx.x) * channels;
-    const unsigned int tile_offset = (blockIdx.y * blockDim.x * TILE_SIZE * TILE_SIZE + blockIdx.x * TILE_SIZE);
+    // TODO: fix these conditions
+    const int bx = blockIdx.x;
+    const int by = blockIdx.y / (TILE_SIZE / blockDim.y);
+    const unsigned int tile_index = (by * blockDim.x + bx) * channels;
+    const unsigned int tile_offset = (by * blockDim.x * TILE_SIZE * TILE_SIZE + bx * TILE_SIZE);
     
-    __shared__ unsigned int block_pixel[4] = {0, 0, 0, 0};
+    __shared__ unsigned int block_pixel[4];
 
     unsigned int thread_pixel[4] = {0, 0, 0, 0};
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
@@ -124,6 +127,7 @@ __global__ void kernel_stage1(
     __syncthreads();
 
     // Then copy to global mosaic sum
+    // TODO: fix this condition
     if (threadIdx.x < channels && threadIdx.y == 0) {
         mosaic_sum[tile_index + threadIdx.x] = block_pixel[threadIdx.x];
     }
@@ -141,7 +145,7 @@ __global__ void kernel_stage2(
 {
     const unsigned int tile_index = (blockIdx.x * blockDim.x + threadIdx.x) * channels;
     
-    __shared__ unsigned long long block_sum[4] = {0, 0, 0, 0};
+    __shared__ unsigned long long block_sum[4];
 
     // each thread calculates one mosaic_value
     if (tile_index < tiles_x * tiles_y * channels) {
