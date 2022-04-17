@@ -51,7 +51,9 @@ void cuda_begin(const Image *input_image) {
 
     const size_t image_data_size = input_image->width * input_image->height * input_image->channels * sizeof(unsigned char);
     // Allocate copy of input image
-    cuda_input_image = *input_image;
+    cuda_input_image.channels = input_image->channels;
+    cuda_input_image.width = input_image->width;
+    cuda_input_image.height = input_image->height;
     cuda_input_image.data = (unsigned char*)malloc(image_data_size);
     memcpy(cuda_input_image.data, input_image->data, image_data_size);
 
@@ -59,7 +61,9 @@ void cuda_begin(const Image *input_image) {
     CUDA_CALL(cudaMalloc(&d_input_image_data, image_data_size));
     CUDA_CALL(cudaMemcpy(d_input_image_data, input_image->data, image_data_size, cudaMemcpyHostToDevice));
 
-    cuda_output_image = *input_image;
+    cuda_output_image.channels = input_image->channels;
+    cuda_output_image.width = input_image->width;
+    cuda_output_image.height = input_image->height;
     cuda_output_image.data = (unsigned char*)malloc(image_data_size);
     // Allocate device buffer for storing output image data
     CUDA_CALL(cudaMalloc(&d_output_image_data, image_data_size));
