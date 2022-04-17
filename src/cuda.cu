@@ -94,25 +94,26 @@ void cuda_begin(const Image *input_image) {
 // then do a loop per thread, threads should access in-order the input elements
 
 __global__ void kernel_stage1(
-    unsigned char *image, int width, int channels,
+    unsigned char *image, int width, int height, int channels,
     unsigned long long *mosaic_sum)
 {
-    const unsigned int tile_index = blockIdx.x * channels;
-    const unsigned int tile_offset = blockIdx.x * TILE_SIZE * TILE_SIZE * channels;
+    const unsigned int tile_index = (blockIdx.y * blockDim.x + blockIdx.x) * channels;
+    const unsigned int tile_offset = (blockIdx.y * blockDim.x * TILE_SIZE * TILE_SIZE + blockIdx.x * TILE_SIZE);
     
-    __shared__ unsigned int block_pixel[4];
+    __shared__ unsigned int block_pixel[4] = {0, 0, 0, 0};
 
-    unsigned int thread_pixel[4];
+    unsigned int thread_pixel[4] = {0, 0, 0, 0};
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    unsigned int pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
-    while (pixel_offset < (TILE_SIZE * width) * channels) {
-        thread_pixel[0] += image[tile_offset + pixel_offset + 0];
-        thread_pixel[1] += image[tile_offset + pixel_offset + 1];
-        thread_pixel[2] += image[tile_offset + pixel_offset + 2];
-        // thread_pixel[3] += image[tile_offset + pixel_offset + 3];
+    unsigned int pixel_offset = (threadIdx.y * width + threadIdx.x);
+    while ((pixel_offset < pixel_offset + (TILE_SIZE * width)) && 
+            pixel_offset < width * height) {
+        thread_pixel[0] += image[(tile_offset + pixel_offset) * channels + 0];
+        thread_pixel[1] += image[(tile_offset + pixel_offset) * channels + 1];
+        thread_pixel[2] += image[(tile_offset + pixel_offset) * channels + 2];
+        // thread_pixel[3] += image[(tile_offset + pixel_offset) * channels + 3];
 
         // only works when blockDim.x == TILE_SIZE
-        pixel_offset += blockDim.y * width * channels;
+        pixel_offset += blockDim.y * width;
     }
 
     // Now I need to add to block_pixel
@@ -138,25 +139,28 @@ __global__ void kernel_stage2(
     unsigned char * mosaic_value,
     unsigned long long *global_pixel_sum) 
 {
-    const unsigned int tile_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const unsigned int tile_index = (blockIdx.x * blockDim.x + threadIdx.x) * channels;
     
-    __shared__ unsigned long long block_sum[4];
+    __shared__ unsigned long long block_sum[4] = {0, 0, 0, 0};
 
-    mosaic_value[tile_index + 0] = (unsigned char) (mosaic_sum[tile_index + 0] / TILE_PIXELS);
-    mosaic_value[tile_index + 1] = (unsigned char) (mosaic_sum[tile_index + 1] / TILE_PIXELS);
-    mosaic_value[tile_index + 2] = (unsigned char) (mosaic_sum[tile_index + 2] / TILE_PIXELS);
-    // mosaic_value[tile_index + 3] = (unsigned char) (mosaic_sum[tile_index + 3] / TILE_PIXELS);
+    // each thread calculates one mosaic_value
+    if (tile_index < tiles_x * tiles_y * channels) {
+        mosaic_value[tile_index + 0] = (unsigned char) (mosaic_sum[tile_index + 0] / TILE_PIXELS);
+        mosaic_value[tile_index + 1] = (unsigned char) (mosaic_sum[tile_index + 1] / TILE_PIXELS);
+        mosaic_value[tile_index + 2] = (unsigned char) (mosaic_sum[tile_index + 2] / TILE_PIXELS);
+        // mosaic_value[tile_index + 3] = (unsigned char) (mosaic_sum[tile_index + 3] / TILE_PIXELS);
 
-    atomicAdd((unsigned int *)&(block_sum[0]), (unsigned int) mosaic_value[tile_index + 0]);
-    atomicAdd((unsigned int *)&(block_sum[1]), (unsigned int) mosaic_value[tile_index + 1]);
-    atomicAdd((unsigned int *)&(block_sum[2]), (unsigned int) mosaic_value[tile_index + 2]);
-    // atomicAdd(&(block_sum[3]), mosaic_value[tile_index + 3]);
+        atomicAdd((unsigned int *)&(block_sum[0]), (unsigned int) mosaic_value[tile_index + 0]);
+        atomicAdd((unsigned int *)&(block_sum[1]), (unsigned int) mosaic_value[tile_index + 1]);
+        atomicAdd((unsigned int *)&(block_sum[2]), (unsigned int) mosaic_value[tile_index + 2]);
+        // atomicAdd((unsigned int *)&(block_sum[3]), (unsigned int) mosaic_value[tile_index + 3]);
+    }
 
     __syncthreads();
 
-    if (threadIdx.x < channels){
-        // atomicAdd(&(d_output_global_average[threadIdx.x]), block_sum[threadIdx.x]/(cuda_TILES_X * cuda_TILES_Y));
-        atomicAdd(&(global_pixel_sum[threadIdx.x]), block_sum[threadIdx.x]/(tiles_x * tiles_y));
+    if (threadIdx.x < channels && tile_index < tiles_x * tiles_y * channels) {
+        // atomicAdd(&(global_pixel_sum[threadIdx.x]), block_sum[threadIdx.x]/(tiles_x * tiles_y));
+        atomicAdd(&(global_pixel_sum[threadIdx.x]), block_sum[threadIdx.x]);
     }
 }
 
@@ -164,7 +168,7 @@ __global__ void kernel_stage2(
 // This assumes one output image pixel per thread
 // and one block per tile
 __global__ void kernel_stage3(
-    unsigned char *mosaic_value, int width, int channels,
+    unsigned char *mosaic_value, int width, int height, int channels,
     unsigned char *output_image) 
 {
     const unsigned int tile_index = blockIdx.x * channels;
@@ -172,17 +176,22 @@ __global__ void kernel_stage3(
     
     __shared__ unsigned char block_pixel[4];
 
-    if (threadIdx.x < channels){
+    // only the first 3/4 threads load a value from global_mem
+    if (threadIdx.x < channels && tile_index < TILE_SIZE * TILE_SIZE * channels) {
         block_pixel[threadIdx.x] = mosaic_value[tile_index + threadIdx.x];
     }
 
     __syncthreads();
 
+    // Every thread calculates output pixel
     unsigned pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
-
-    output_image[tile_index + pixel_offset +0] = block_pixel[0];
-    output_image[tile_index + pixel_offset +1] = block_pixel[1];
-    output_image[tile_index + pixel_offset +2] = block_pixel[2];
+    // and then broadcasts the block_pixel to it
+    if (pixel_offset < width * height * channels) {
+        output_image[pixel_offset +0] = block_pixel[0];
+        output_image[pixel_offset +1] = block_pixel[1];
+        output_image[pixel_offset +2] = block_pixel[2];
+        // output_image[pixel_offset +3] = block_pixel[3];
+    }
 
     // while (pixel_offset < (TILE_SIZE * width) * channels) {
     //     thread_pixel[0] += d_input_image_data[tile_offset + pixel_offset + 0];
@@ -201,9 +210,12 @@ void cuda_stage1() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     // skip_tile_sum(input_image, mosaic_sum);
     // call the kernel, make sure the x dimension is equal to TILE_SIZE
-    int grid_size = cuda_TILES_X * cuda_TILES_Y;
+    dim3 grid_size(cuda_TILES_X, cuda_TILES_Y);
     dim3 block_size(TILE_SIZE, BLOCK_SIZE_Y);
-    kernel_stage1<<< grid_size, block_size>>>(d_input_image_data, cuda_input_image.width, cuda_input_image.channels, d_mosaic_sum);
+    kernel_stage1<<< grid_size, block_size>>>(
+        d_input_image_data, cuda_input_image.width, 
+        cuda_input_image.height, cuda_input_image.channels,
+        d_mosaic_sum);
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation function with the correct inputs
     // You will need to copy the data back to host before passing to these functions
@@ -245,7 +257,8 @@ void cuda_stage3() {
     int grid_size = cuda_TILES_X * cuda_TILES_Y;
     dim3 block_size(TILE_SIZE, TILE_SIZE);
     kernel_stage3<<< grid_size, block_size>>>(
-        d_mosaic_value, cuda_output_image.width, cuda_output_image.channels,
+        d_mosaic_value, cuda_output_image.width, cuda_output_image.height, 
+        cuda_output_image.channels,
         d_output_image_data);
 
 #ifdef VALIDATION
