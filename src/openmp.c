@@ -1,6 +1,8 @@
 #include "openmp.h"
 #include "helper.h"
 #include "omp.h"
+#include <stdlib.h>
+#include <string.h>
 ///
 /// Algorithm storage
 ///
@@ -132,7 +134,7 @@ void openmp_stage3() {
     }
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation function with the correct inputs
-    validate_broadcast(&input_image, mosaic_value, &output_image);
+    validate_broadcast(&omp_input_image, omp_mosaic_value, &omp_output_image);
 #endif    
 }
 void openmp_end(Image *output_image) {

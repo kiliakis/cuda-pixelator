@@ -1,6 +1,7 @@
 #include "cuda.cuh"
 
 #include <cstring>
+#include <cstdlib>
 
 #include "helper.h"
 
