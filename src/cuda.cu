@@ -100,11 +100,11 @@ __global__ void kernel_stage1(
     const unsigned int tile_index = blockIdx.x * channels;
     const unsigned int tile_offset = blockIdx.x * TILE_SIZE * TILE_SIZE * channels;
     
-    __shared__ unsigned char block_pixel[4];
+    __shared__ unsigned int block_pixel[4];
 
-    unsigned char thread_pixel[4];
+    unsigned int thread_pixel[4];
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
-    unsigned pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
+    unsigned int pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
     while (pixel_offset < (TILE_SIZE * width) * channels) {
         thread_pixel[0] += image[tile_offset + pixel_offset + 0];
         thread_pixel[1] += image[tile_offset + pixel_offset + 1];
@@ -203,7 +203,7 @@ void cuda_stage1() {
     // call the kernel, make sure the x dimension is equal to TILE_SIZE
     int grid_size = cuda_TILES_X * cuda_TILES_Y;
     dim3 block_size(TILE_SIZE, BLOCK_SIZE_Y);
-    kernel_stage1<<< grid_size, block_size>>>(cuda_input_image.data, cuda_input_image.width, cuda_input_image.channels, d_mosaic_sum);
+    kernel_stage1<<< grid_size, block_size>>>(d_input_image_data, cuda_input_image.width, cuda_input_image.channels, d_mosaic_sum);
 #ifdef VALIDATION
     // TODO: Uncomment and call the validation function with the correct inputs
     // You will need to copy the data back to host before passing to these functions
