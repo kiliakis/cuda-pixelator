@@ -112,9 +112,9 @@ __global__ void kernel_stage1(
     }
 
     // Now I need to add to block_pixel
-    atomicAdd(&(block_pixel[0]), thread_pixel[0]);
-    atomicAdd(&(block_pixel[1]), thread_pixel[1]);
-    atomicAdd(&(block_pixel[2]), thread_pixel[2]);
+    atomicAdd((unsigned int *)&(block_pixel[0]), (unsigned int) thread_pixel[0]);
+    atomicAdd((unsigned int *)&(block_pixel[1]), (unsigned int) thread_pixel[1]);
+    atomicAdd((unsigned int *)&(block_pixel[2]), (unsigned int) thread_pixel[2]);
     // atomicAdd(&(block_pixel[3]), thread_pixel[3]);
     __syncthreads();
 
@@ -143,9 +143,9 @@ __global__ void kernel_stage2(
     mosaic_value[tile_index + 2] = (unsigned char) (mosaic_sum[tile_index + 2] / TILE_PIXELS);
     // mosaic_value[tile_index + 3] = (unsigned char) (mosaic_sum[tile_index + 3] / TILE_PIXELS);
 
-    atomicAdd(&(block_sum[0]), mosaic_value[tile_index + 0]);
-    atomicAdd(&(block_sum[1]), mosaic_value[tile_index + 1]);
-    atomicAdd(&(block_sum[2]), mosaic_value[tile_index + 2]);
+    atomicAdd((unsigned int *)&(block_sum[0]), (unsigned int) mosaic_value[tile_index + 0]);
+    atomicAdd((unsigned int *)&(block_sum[1]), (unsigned int) mosaic_value[tile_index + 1]);
+    atomicAdd((unsigned int *)&(block_sum[2]), (unsigned int) mosaic_value[tile_index + 2]);
     // atomicAdd(&(block_sum[3]), mosaic_value[tile_index + 3]);
 
     __syncthreads();
@@ -250,7 +250,7 @@ void cuda_stage3() {
     // (Ensure that data copy is carried out within the ifdef VALIDATION so that it doesn't affect your benchmark results!)
     CUDA_CALL(cudaMemcpy(cuda_output_image.data, d_output_image_data, cuda_output_image.width * cuda_output_image.height * cuda_output_image.channels * sizeof(unsigned char), cudaMemcpyDeviceToHost));
     
-    validate_broadcast(&cuda_input_image, cpu_mosaic_value, &output_image);
+    validate_broadcast(&cuda_input_image, cpu_mosaic_value, &cuda_output_image);
 #endif    
 }
 
