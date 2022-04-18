@@ -92,7 +92,7 @@ void cuda_begin(const Image *input_image) {
 // atomically
 // I find tile index and tile offset
 // then do a loop per thread, threads should access in-order the input elements
-
+// TODO: can be re-organized so that threads process consecutive elements
 __global__ void kernel_stage1(
     unsigned char *image, int width, int height, int channels,
     unsigned long long *mosaic_sum)
@@ -109,7 +109,7 @@ __global__ void kernel_stage1(
     unsigned int thread_pixel[4] = {0, 0, 0, 0};
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
     unsigned int pixel_offset = (threadIdx.y * width + threadIdx.x);
-    while ((pixel_offset < tile_offset + (TILE_SIZE * width)) && 
+    while ((pixel_offset < (TILE_SIZE * width)) && 
             pixel_offset < width * height) {
         thread_pixel[0] += image[(tile_offset + pixel_offset) * channels + 0];
         thread_pixel[1] += image[(tile_offset + pixel_offset) * channels + 1];
