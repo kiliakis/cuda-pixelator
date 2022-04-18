@@ -145,10 +145,13 @@ __global__ void kernel_stage2(
     unsigned char * mosaic_value,
     unsigned long long *global_pixel_sum) 
 {
-    const unsigned int tile_index = (blockIdx.x * gridDim.x + threadIdx.x) * channels;
+    const unsigned int tile_index = (blockIdx.x * blockDim.x + threadIdx.x) * channels;
     
     __shared__ unsigned long long block_sum[4];
-
+    if (threadIdx.x < channels){
+        block_sum[threadIdx.x]=0;
+    }
+    __syncthreads();
     // each thread calculates one mosaic_value
     if (tile_index < tiles_x * tiles_y * channels) {
         mosaic_value[tile_index + 0] = (unsigned char) (mosaic_sum[tile_index + 0] / TILE_PIXELS);
@@ -161,13 +164,13 @@ __global__ void kernel_stage2(
         atomicAdd((unsigned long long *)&(block_sum[2]), (unsigned long long) mosaic_value[tile_index + 2]);
         // atomicAdd((unsigned int *)&(block_sum[3]), (unsigned int) mosaic_value[tile_index + 3]);
     }
-
+    
     __syncthreads();
 
     if (threadIdx.x < channels && tile_index < tiles_x * tiles_y * channels) {
-        // atomicAdd(&(global_pixel_sum[threadIdx.x]), block_sum[threadIdx.x]/(tiles_x * tiles_y));
         atomicAdd(&(global_pixel_sum[threadIdx.x]), block_sum[threadIdx.x]);
     }
+    
 }
 
 
@@ -192,7 +195,7 @@ __global__ void kernel_stage3(
     __syncthreads();
 
     // Every thread calculates output pixel
-    unsigned pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
+    unsigned pixel_offset = (threadIdx.y * width + threadIdx.x);
     // and then broadcasts the block_pixel to it
     if (tile_offset + pixel_offset < width * height) {
         output_image[(tile_offset + pixel_offset)*channels +0] = block_pixel[0];
@@ -238,8 +241,8 @@ void cuda_stage1() {
 void cuda_stage2(unsigned char* output_global_average) {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     // skip_compact_mosaic(TILES_X, TILES_Y, mosaic_sum, compact_mosaic, global_pixel_average);
-    int grid_size = (cuda_TILES_X * cuda_TILES_Y + BLOCK_SIZE -1) / BLOCK_SIZE;
-    dim3 block_size(BLOCK_SIZE);
+    int grid_size = (cuda_TILES_X * cuda_TILES_Y + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int block_size = BLOCK_SIZE;
     kernel_stage2<<< grid_size, block_size>>>(
         d_mosaic_sum, cuda_input_image.channels,
         cuda_TILES_X, cuda_TILES_Y,
@@ -253,6 +256,7 @@ void cuda_stage2(unsigned char* output_global_average) {
     CUDA_CALL(cudaMemcpy(global_pixel_sum, d_global_pixel_sum, cuda_input_image.channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
     for (int i = 0; i < cuda_input_image.channels; ++i) {
         output_global_average[i] = (unsigned char)(global_pixel_sum[i]/(cuda_TILES_X * cuda_TILES_Y));
+        //printf("glob_average[%d] = %d\n", i, output_global_average[i]);
     }
     validate_compact_mosaic(cuda_TILES_X, cuda_TILES_Y, cpu_mosaic_sum, cpu_mosaic_value, output_global_average);
 #endif    

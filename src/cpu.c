@@ -73,6 +73,8 @@ void cpu_stage2(unsigned char* output_global_average) {
     // Reduce the whole image sum to whole image average for the return value
     for (int ch = 0; ch < cpu_input_image.channels; ++ch) {
         output_global_average[ch] = (unsigned char)(whole_image_sum[ch] / (cpu_TILES_X * cpu_TILES_Y));
+        //printf("glob_average[%d] = %d\n", ch, output_global_average[ch]);
+        
     }
 #ifdef VALIDATION
     validate_compact_mosaic(cpu_TILES_X, cpu_TILES_Y, cpu_mosaic_sum, cpu_mosaic_value, output_global_average);
