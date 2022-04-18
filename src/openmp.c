@@ -56,16 +56,21 @@ void openmp_stage1() {
             const unsigned int tile_index = (t_y * omp_TILES_X + t_x) * omp_input_image.channels;
             const unsigned int tile_offset = (t_y * omp_TILES_X * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * omp_input_image.channels;
             // For each pixel within the tile
+            unsigned long long local_sum[4] = {0, 0, 0, 0};
             for (int p_x = 0; p_x < TILE_SIZE; ++p_x) {
                 for (int p_y = 0; p_y < TILE_SIZE; ++p_y) {
                     // For each colour channel
                     const unsigned int pixel_offset = (p_y * omp_input_image.width + p_x) * omp_input_image.channels;
                     for (int ch = 0; ch < omp_input_image.channels; ++ch) {
                         // Load pixel
-                        const unsigned char pixel = omp_input_image.data[tile_offset + pixel_offset + ch];
-                        omp_mosaic_sum[tile_index + ch] += pixel;
+                        //const unsigned char pixel = omp_input_image.data[tile_offset + pixel_offset + ch];
+                        local_sum[ch] += omp_input_image.data[tile_offset + pixel_offset + ch]; 
+                        //omp_mosaic_sum[tile_index + ch] += pixel;
                     }
                 }
+            }
+            for (int ch = 0; ch < omp_input_image.channels; ++ch){
+                omp_mosaic_sum[tile_index + ch] += local_sum[ch];
             }
         }
     }
