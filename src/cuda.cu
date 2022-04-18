@@ -175,13 +175,14 @@ __global__ void kernel_stage3(
     unsigned char *mosaic_value, int width, int height, int channels,
     unsigned char *output_image) 
 {
-    const unsigned int tile_index = blockIdx.x * channels;
-    // const unsigned int tile_offset = blockIdx.x * TILE_SIZE * TILE_SIZE * channels;
+    const unsigned int tile_index = (blockIdx.y * blockDim.x + blockIdx.x) * channels;
+    const unsigned int tile_offset = 
+        (blockIdx.y * blockDim.x * TILE_SIZE * TILE_SIZE + blockIdx.x * TILE_SIZE);
     
     __shared__ unsigned char block_pixel[4];
 
-    // only the first 3/4 threads load a value from global_mem
-    if (threadIdx.x < channels && tile_index < TILE_SIZE * TILE_SIZE * channels) {
+    // only the first 3-4 threads load a value from global_mem
+    if (threadIdx.x < channels && tile_offset < width * height) {
         block_pixel[threadIdx.x] = mosaic_value[tile_index + threadIdx.x];
     }
 
@@ -191,10 +192,10 @@ __global__ void kernel_stage3(
     unsigned pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
     // and then broadcasts the block_pixel to it
     if (pixel_offset < width * height * channels) {
-        output_image[pixel_offset +0] = block_pixel[0];
-        output_image[pixel_offset +1] = block_pixel[1];
-        output_image[pixel_offset +2] = block_pixel[2];
-        // output_image[pixel_offset +3] = block_pixel[3];
+        output_image[(tile_offset + pixel_offset)*channels +0] = block_pixel[0];
+        output_image[(tile_offset + pixel_offset)*channels +1] = block_pixel[1];
+        output_image[(tile_offset + pixel_offset)*channels +2] = block_pixel[2];
+        // output_image[(tile_offset + pixel_offset)*channels +3] = block_pixel[3];
     }
 
     // while (pixel_offset < (TILE_SIZE * width) * channels) {
@@ -258,7 +259,7 @@ void cuda_stage2(unsigned char* output_global_average) {
 void cuda_stage3() {
     // Optionally during development call the skip function with the correct inputs to skip this stage
     // skip_broadcast(input_image, compact_mosaic, output_image);
-    int grid_size = cuda_TILES_X * cuda_TILES_Y;
+    dim3 grid_size(cuda_TILES_X, cuda_TILES_Y);
     dim3 block_size(TILE_SIZE, TILE_SIZE);
     kernel_stage3<<< grid_size, block_size>>>(
         d_mosaic_value, cuda_output_image.width, cuda_output_image.height, 
