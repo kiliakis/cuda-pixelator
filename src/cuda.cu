@@ -105,6 +105,11 @@ __global__ void kernel_stage1(
             (blockIdx.y * gridDim.x * TILE_SIZE * TILE_SIZE + blockIdx.x * TILE_SIZE);
     
     __shared__ unsigned long long block_pixel[4];
+    
+    if (threadIdx.x < channels && threadIdx.y == 0){
+        block_pixel[threadIdx.x] = 0;
+    }
+    __syncthreads();
 
     unsigned int thread_pixel[4] = {0, 0, 0, 0};
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
