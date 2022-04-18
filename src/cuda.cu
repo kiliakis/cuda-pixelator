@@ -104,7 +104,7 @@ __global__ void kernel_stage1(
     const unsigned int tile_offset = 
             (blockIdx.y * gridDim.x * TILE_SIZE * TILE_SIZE + blockIdx.x * TILE_SIZE);
     
-    __shared__ unsigned int block_pixel[4];
+    __shared__ unsigned long long block_pixel[4];
 
     unsigned int thread_pixel[4] = {0, 0, 0, 0};
     // unsigned int tid = threadIdx.x + threadIdx.y * blockDim.x;
@@ -123,9 +123,9 @@ __global__ void kernel_stage1(
     }
 
     // Now I need to add to block_pixel
-    atomicAdd((unsigned int *)&(block_pixel[0]), (unsigned int) thread_pixel[0]);
-    atomicAdd((unsigned int *)&(block_pixel[1]), (unsigned int) thread_pixel[1]);
-    atomicAdd((unsigned int *)&(block_pixel[2]), (unsigned int) thread_pixel[2]);
+    atomicAdd((unsigned long long *)&(block_pixel[0]), (unsigned long long) thread_pixel[0]);
+    atomicAdd((unsigned long long *)&(block_pixel[1]), (unsigned long long) thread_pixel[1]);
+    atomicAdd((unsigned long long *)&(block_pixel[2]), (unsigned long long) thread_pixel[2]);
     // atomicAdd(&(block_pixel[3]), thread_pixel[3]);
     __syncthreads();
 
@@ -145,7 +145,7 @@ __global__ void kernel_stage2(
     unsigned char * mosaic_value,
     unsigned long long *global_pixel_sum) 
 {
-    const unsigned int tile_index = (blockIdx.x * blockDim.x + threadIdx.x) * channels;
+    const unsigned int tile_index = (blockIdx.x * gridDim.x + threadIdx.x) * channels;
     
     __shared__ unsigned long long block_sum[4];
 
@@ -156,9 +156,9 @@ __global__ void kernel_stage2(
         mosaic_value[tile_index + 2] = (unsigned char) (mosaic_sum[tile_index + 2] / TILE_PIXELS);
         // mosaic_value[tile_index + 3] = (unsigned char) (mosaic_sum[tile_index + 3] / TILE_PIXELS);
 
-        atomicAdd((unsigned int *)&(block_sum[0]), (unsigned int) mosaic_value[tile_index + 0]);
-        atomicAdd((unsigned int *)&(block_sum[1]), (unsigned int) mosaic_value[tile_index + 1]);
-        atomicAdd((unsigned int *)&(block_sum[2]), (unsigned int) mosaic_value[tile_index + 2]);
+        atomicAdd((unsigned long long *)&(block_sum[0]), (unsigned long long) mosaic_value[tile_index + 0]);
+        atomicAdd((unsigned long long *)&(block_sum[1]), (unsigned long long) mosaic_value[tile_index + 1]);
+        atomicAdd((unsigned long long *)&(block_sum[2]), (unsigned long long) mosaic_value[tile_index + 2]);
         // atomicAdd((unsigned int *)&(block_sum[3]), (unsigned int) mosaic_value[tile_index + 3]);
     }
 
@@ -194,7 +194,7 @@ __global__ void kernel_stage3(
     // Every thread calculates output pixel
     unsigned pixel_offset = (threadIdx.y * width + threadIdx.x) * channels;
     // and then broadcasts the block_pixel to it
-    if (pixel_offset < width * height * channels) {
+    if (tile_offset + pixel_offset < width * height) {
         output_image[(tile_offset + pixel_offset)*channels +0] = block_pixel[0];
         output_image[(tile_offset + pixel_offset)*channels +1] = block_pixel[1];
         output_image[(tile_offset + pixel_offset)*channels +2] = block_pixel[2];
@@ -252,7 +252,7 @@ void cuda_stage2(unsigned char* output_global_average) {
     CUDA_CALL(cudaMemcpy(cpu_mosaic_value, d_mosaic_value, cuda_TILES_X * cuda_TILES_Y * cuda_input_image.channels * sizeof(unsigned char), cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(global_pixel_sum, d_global_pixel_sum, cuda_input_image.channels * sizeof(unsigned long long), cudaMemcpyDeviceToHost));
     for (int i = 0; i < cuda_input_image.channels; ++i) {
-        output_global_average[i] = (unsigned char)(global_pixel_sum[i]/TILE_PIXELS);
+        output_global_average[i] = (unsigned char)(global_pixel_sum[i]/(cuda_TILES_X * cuda_TILES_Y));
     }
     validate_compact_mosaic(cuda_TILES_X, cuda_TILES_Y, cpu_mosaic_sum, cpu_mosaic_value, output_global_average);
 #endif    
