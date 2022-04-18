@@ -126,13 +126,15 @@ void openmp_stage3() {
         for (unsigned int t_y = 0; t_y < omp_TILES_Y; ++t_y) {
             const unsigned int tile_index = (t_y * omp_TILES_X + t_x) * omp_input_image.channels;
             const unsigned int tile_offset = (t_y * omp_TILES_X * TILE_SIZE * TILE_SIZE + t_x * TILE_SIZE) * omp_input_image.channels;
-            
+            unsigned char local_value[4];
+            memcpy(local_value, omp_mosaic_value+tile_index, omp_input_image.channels);
             // For each pixel within the tile
             for (unsigned int p_x = 0; p_x < TILE_SIZE; ++p_x) {
                 for (unsigned int p_y = 0; p_y < TILE_SIZE; ++p_y) {
                     const unsigned int pixel_offset = (p_y * omp_input_image.width + p_x) * omp_input_image.channels;
                     // Copy whole pixel
-                    memcpy(omp_output_image.data + tile_offset + pixel_offset, omp_mosaic_value + tile_index, omp_input_image.channels);
+                    for (int ch=0; ch<omp_input_image.channels; ++ch)
+                        omp_output_image.data[tile_offset + pixel_offset + ch] = local_value[ch];
                 }
             }
         }
